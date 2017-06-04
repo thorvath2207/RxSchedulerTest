@@ -5,9 +5,24 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:ReactiveThreadSucks"
         mc:Ignorable="d"
-        Title="MainWindow" Height="600" Width="525" DataContext="{Binding Source={StaticResource Locator}, Path=Main}">
-    <StackPanel>
-        <DataGrid ItemsSource="{Binding EventList, UpdateSourceTrigger=PropertyChanged}" Height="550"></DataGrid>
-        <Button Content="Start suck" Command="{Binding StartSuckerCommand}" Height="20"></Button>
-    </StackPanel>
+        Title="MainWindow" Height="630" Width="525" DataContext="{Binding Source={StaticResource Locator}, Path=Main}">
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition />
+            <ColumnDefinition />
+        </Grid.ColumnDefinitions>
+        <StackPanel Margin="5">
+            <DataGrid ItemsSource="{Binding EventList, UpdateSourceTrigger=PropertyChanged}" />
+        </StackPanel>
+        <StackPanel Grid.Column="1" Margin="5">
+            <Label Content="ObserveOn:" />
+            <ComboBox ItemsSource="{Binding Schedulers}" SelectedItem="{Binding ObserveOnScheduler}" />
+            <Label Content="SubscribeOn:" />
+            <ComboBox ItemsSource="{Binding Schedulers}" SelectedItem="{Binding SubscireOnScheduler}" />
+            <Label Content="Result:" />
+            <TextBox IsReadOnly="True" Text="{Binding ResultLabel}" TextWrapping="Wrap" Height="50"/>
+            <Button Content="Start suck" Command="{Binding StartSuckerCommand}" Height="20" Margin="0 10 0 0"/>
+        </StackPanel>
+    </Grid>
+
 </Window>

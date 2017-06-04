@@ -9,18 +9,60 @@ using System.Reactive.Concurrency;
 using System;
 using System.Collections.ObjectModel;
 using System.Windows.Threading;
+using System.Reactive;
 
 namespace ReactiveThreadSucks.ViewModel
 {
     public class MainViewModel : ViewModelBase
     {
         private ObservableCollection<Event> evenList;
+        private Dictionary<string, IScheduler> schedulers;
+        private KeyValuePair<string, IScheduler> observeOnScheduler;
+        private KeyValuePair<string, IScheduler> subscribeOnScheduler;
 
         public MainViewModel()
         {
             this.EventList = new ObservableCollection<Event>();
             this.StartSuckerCommand = new RelayCommand(this.StartSuck);
+            this.schedulers = new Dictionary<string, IScheduler>();
+            this.schedulers.Add("Dispatcher", DispatcherScheduler.Current);
+            this.schedulers.Add("TaskPool", TaskPoolScheduler.Default);
+            this.schedulers.Add("ThreadPool", ThreadPoolScheduler.Instance);
+            this.schedulers.Add("NewThread", NewThreadScheduler.Default);
+
         }
+
+        public string ResultLabel { get; set; }
+
+        public KeyValuePair<string, IScheduler> ObserveOnScheduler
+        {
+            get
+            {
+                return this.observeOnScheduler;
+            }
+
+            set
+            {
+                this.observeOnScheduler = value;
+                this.RaisePropertyChanged(() => this.ObserveOnScheduler);
+            }
+        }
+
+        public KeyValuePair<string, IScheduler> SubscireOnScheduler
+        {
+            get
+            {
+                return this.subscribeOnScheduler;
+            }
+
+            set
+            {
+                this.subscribeOnScheduler = value;
+                this.RaisePropertyChanged(() => this.SubscireOnScheduler);
+            }
+        }
+
+        public Dictionary<string, IScheduler> Schedulers => this.schedulers;
 
         public ObservableCollection<Event> EventList
         {
@@ -39,42 +81,78 @@ namespace ReactiveThreadSucks.ViewModel
 
         private void StartSuck()
         {
-           
-            var obs = this.SampleTask().ToObservable(NewThreadScheduler.Default);
+            this.ResultLabel = string.Empty;
 
-            obs
-                .SubscribeOn(NewThreadScheduler.Default)
-                .ObserveOn(DispatcherScheduler.Current)
-                .Subscribe(HandleResponse);
+            var obs = this.SampleTask()
+                .ToObservable()
+                .ObserveOnDispatcher()
+                .Subscribe(this.HandleResponse);
+
+            //obs.SubscribeOn(this.SubscireOnScheduler.Value)
+            //    .ObserveOn(this.ObserveOnScheduler.Value)
+            //    .Subscribe(HandleResponse);
+
+            var obs2 = Task.Delay(TimeSpan.FromSeconds(35)).ToObservable();
+
+            obs2.SubscribeOn(this.SubscireOnScheduler.Value)
+                .ObserveOn(this.ObserveOnScheduler.Value)
+                .Subscribe(HandleTaskDelay);
         }
 
         private async Task<List<Event>> SampleTask()
         {
             var result = new List<Event>();
             System.Diagnostics.Debug.WriteLine("Start new task on thread id: {0}", System.Threading.Thread.CurrentThread.ManagedThreadId);
-            for (int i = 1; i < 15; ++i)
+            using (HttpClient httpClient = new HttpClient())
             {
-                using (HttpClient httpClient = new HttpClient())
+                var uri = "http://setgetgo.com/randomword/get.php";
+                var response = await httpClient.GetStringAsync(uri);
+                result.Add(new Event
                 {
-                    System.Threading.Thread.Sleep(1000);
-                    var uri = "http://setgetgo.com/randomword/get.php";
-                    var response = await httpClient.GetStringAsync(uri);
-                    result.Add(new Event
-                    {
-                        AddTime = DateTime.Now,
-                        Content = response,
-                        ThreadId = System.Threading.Thread.CurrentThread.ManagedThreadId
-                    });
-                }
+                    AddTime = DateTime.Now,
+                    Content = response,
+                    ThreadId = System.Threading.Thread.CurrentThread.ManagedThreadId
+                });
             }
+
+            await this.SampleSubTask();
+
+            System.Threading.Thread.Sleep(10000);
 
             return result;
         }
 
+        private async Task<string> SampleSubTask()
+        {
+            System.Diagnostics.Debug.WriteLine("Start new sub task on thread id: {0}", System.Threading.Thread.CurrentThread.ManagedThreadId);
+            await Task.Delay(5000);
+
+            return "lofaszt a seggedbe";
+        }
+
         private void HandleResponse(List<Event> responses)
         {
-            System.Diagnostics.Debug.WriteLine("Received on Thread id: {0}", System.Threading.Thread.CurrentThread.ManagedThreadId);
-            responses.ForEach(r => this.EventList.Add(r));
+            try
+            {
+                System.Diagnostics.Debug.WriteLine("Received on Thread id: {0}",
+                    System.Threading.Thread.CurrentThread.ManagedThreadId);
+                responses.ForEach(r => this.EventList.Add(r));
+            }
+            catch (Exception e)
+            {
+                this.ResultLabel = e.Message;
+                this.RaisePropertyChanged(() => this.ResultLabel);
+            }
+        }
+
+        private void HandleTaskDelay(Unit n)
+        {
+            this.EventList.Add(new Event
+            {
+                AddTime = DateTime.Now,
+                Content = "From TaskDelay",
+                ThreadId = 0
+            });
         }
     }
 }
