@@ -116,18 +116,19 @@ namespace ReactiveThreadSucks.ViewModel
             }
 
             await this.SampleSubTask();
-
-            System.Threading.Thread.Sleep(10000);
-
             return result;
         }
 
-        private async Task<string> SampleSubTask()
+        private Task<string> SampleSubTask()
         {
-            System.Diagnostics.Debug.WriteLine("Start new sub task on thread id: {0}", System.Threading.Thread.CurrentThread.ManagedThreadId);
-            await Task.Delay(5000);
-
-            return "lofaszt a seggedbe";
+            return Task.Run<string>(async () =>
+            {
+                System.Diagnostics.Debug.WriteLine("Start new sub task on thread id: {0}",
+                    System.Threading.Thread.CurrentThread.ManagedThreadId);
+                await Task.Delay(5000);
+                System.Threading.Thread.Sleep(10000);
+                return "lofaszt a seggedbe";
+            });
         }
 
         private void HandleResponse(List<Event> responses)
