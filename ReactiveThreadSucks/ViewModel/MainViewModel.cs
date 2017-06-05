@@ -10,6 +10,8 @@ using System;
 using System.Collections.ObjectModel;
 using System.Windows.Threading;
 using System.Reactive;
+using System.Threading;
+using System.Reactive.Disposables;
 
 namespace ReactiveThreadSucks.ViewModel
 {
@@ -82,67 +84,125 @@ namespace ReactiveThreadSucks.ViewModel
         private void StartSuck()
         {
             this.ResultLabel = string.Empty;
+            if (string.IsNullOrEmpty(Thread.CurrentThread.Name))
+                Thread.CurrentThread.Name = "Main";
 
-            //var obs = this.SampleTask()
+            IScheduler thread1 = new NewThreadScheduler(x => new Thread(x) { Name = "Thread1" });
+            IScheduler thread2 = new NewThreadScheduler(x => new Thread(x) { Name = "Thread2" });
+
+            var blockObs = Observable.Create((IObserver<string> observer) =>
+            {
+                Thread.Sleep(1000);
+                observer.OnNext(string.Format("a  " + System.Threading.Thread.CurrentThread.Name));
+                Thread.Sleep(1000);
+                observer.OnNext(string.Format("b  " + System.Threading.Thread.CurrentThread.Name));
+                observer.OnCompleted();
+                Thread.Sleep(1000);
+                return Disposable.Create(() => Console.WriteLine("Observer has unsubscribed"));
+            });
+
+            blockObs
+                .SubscribeOn(thread1)
+                .ObserveOn(thread2).
+                Subscribe((string b) =>
+           {
+               System.Diagnostics.Debug.WriteLine(b);
+               System.Diagnostics.Debug.WriteLine("Subs: " + Thread.CurrentThread.Name + " || " + Thread.CurrentThread.ManagedThreadId);
+           });
+
+            //var obs = Observable.Create((IObserver<List<Event>> observer) =>
+            //    {
+            //        var result = new List<Event>();
+            //        System.Diagnostics.Debug.WriteLine("Start sample task: " + Thread.CurrentThread.Name + " || " + Thread.CurrentThread.ManagedThreadId);
+            //        using (HttpClient httpClient = new HttpClient())
+            //        {
+            //            var uri = "http://setgetgo.com/randomword/get.php";
+            //            var response1 = httpClient.GetStringAsync(uri);
+            //            var response2 = httpClient.GetStringAsync(uri);
+            //            result.Add(new Event
+            //            {
+            //                AddTime = DateTime.Now,
+            //                Content = response1.Result,
+            //                ThreadId = Thread.CurrentThread.Name + Thread.CurrentThread.ManagedThreadId
+            //            });
+
+            //            result.Add(new Event
+            //            {
+            //                AddTime = DateTime.Now,
+            //                Content = response2.Result,
+            //                ThreadId = Thread.CurrentThread.Name + Thread.CurrentThread.ManagedThreadId
+            //            });
+            //        }
+            //        observer.OnNext(result);
+            //        observer.OnCompleted();
+
+            //        return Disposable.Create(() => System.Diagnostics.Debug.WriteLine("Done"));
+            //    });
+
+            var obs = Observable.FromAsync(x => this.SampleTaskAsync());
+
+            obs
+            .SubscribeOn(thread2)
+            .ObserveOn(DispatcherScheduler.Current)
+            .Subscribe(this.HandleResponses);
+
+            //var obs2 = this.SampleSubTask()
             //    .ToObservable()
             //    .ObserveOnDispatcher()
             //    .Subscribe(this.HandleResponse);
 
-            var obs2 = this.SampleSubTask()
-                .ToObservable()
-                .ObserveOnDispatcher()
-                .Subscribe(this.HandleResponse);
-
         }
 
-        private async Task<List<Event>> SampleTask()
+        private async Task<List<Event>> SampleTaskAsync()
         {
             var result = new List<Event>();
-            System.Diagnostics.Debug.WriteLine("Start new task on thread id: {0}", System.Threading.Thread.CurrentThread.ManagedThreadId);
+            System.Diagnostics.Debug.WriteLine("Start sample task: " + Thread.CurrentThread.Name + " || " + Thread.CurrentThread.ManagedThreadId);
             using (HttpClient httpClient = new HttpClient())
             {
                 var uri = "http://setgetgo.com/randomword/get.php";
-                var response = await httpClient.GetStringAsync(uri);
+                var response1 = await httpClient.GetStringAsync(uri);
+                var response2 = await httpClient.GetStringAsync(uri);
                 result.Add(new Event
                 {
                     AddTime = DateTime.Now,
-                    Content = response,
-                    ThreadId = System.Threading.Thread.CurrentThread.ManagedThreadId
+                    Content = response1,
+                    ThreadId = Thread.CurrentThread.Name + Thread.CurrentThread.ManagedThreadId
+                });
+
+                result.Add(new Event
+                {
+                    AddTime = DateTime.Now,
+                    Content = response2,
+                    ThreadId = Thread.CurrentThread.Name + Thread.CurrentThread.ManagedThreadId
                 });
             }
-
-            var response2 = await this.SampleSubTask();
-            result.Add(response2);
             return result;
         }
 
-        private Task<Event> SampleSubTask()
-        {
-            return Task.Run(async () =>
-            {
-                System.Diagnostics.Debug.WriteLine("Start new sub task on thread id: {0}",
-                    System.Threading.Thread.CurrentThread.ManagedThreadId);
-                System.Threading.Thread.Sleep(10000);
-                using (HttpClient httpClient = new HttpClient())
-                {
-                    var uri = "http://setgetgo.com/randomword/get.php";
-                    var response = await httpClient.GetStringAsync(uri);
-                    return new Event
-                    {
-                        AddTime = DateTime.Now,
-                        Content = response,
-                        ThreadId = System.Threading.Thread.CurrentThread.ManagedThreadId
-                    };
-                }
-            });
-        }
+        //private Task<Event> SampleSubTask()
+        //{
+        //    return Task.Run(async () =>
+        //    {
+        //        System.Diagnostics.Debug.WriteLine("Start sample sub task: " + Thread.CurrentThread.Name + " || " + Thread.CurrentThread.ManagedThreadId);
+        //        using (HttpClient httpClient = new HttpClient())
+        //        {
+        //            var uri = "http://setgetgo.com/randomword/get.php";
+        //            var response = await httpClient.GetStringAsync(uri);
+        //            return new Event
+        //            {
+        //                AddTime = DateTime.Now,
+        //                Content = response,
+        //                ThreadId = System.Threading.Thread.CurrentThread.Name
+        //            };
+        //        }
+        //    });
+        //}
 
-        private void HandleResponse(List<Event> responses)
+        private void HandleResponses(List<Event> responses)
         {
             try
             {
-                System.Diagnostics.Debug.WriteLine("Received on Thread id: {0}",
-                    System.Threading.Thread.CurrentThread.ManagedThreadId);
+                System.Diagnostics.Debug.WriteLine("Subs(LIST) on: " + Thread.CurrentThread.Name + " || " + Thread.CurrentThread.ManagedThreadId);
                 responses.ForEach(r => this.EventList.Add(r));
             }
             catch (Exception e)
@@ -156,8 +216,7 @@ namespace ReactiveThreadSucks.ViewModel
         {
             try
             {
-                System.Diagnostics.Debug.WriteLine("Received on Thread id: {0}",
-                    System.Threading.Thread.CurrentThread.ManagedThreadId);
+                System.Diagnostics.Debug.WriteLine("Subs on: " + Thread.CurrentThread.Name + " || " + Thread.CurrentThread.ManagedThreadId);
                 this.EventList.Add(response);
             }
             catch (Exception e)
@@ -165,16 +224,6 @@ namespace ReactiveThreadSucks.ViewModel
                 this.ResultLabel = e.Message;
                 this.RaisePropertyChanged(() => this.ResultLabel);
             }
-        }
-
-        private void HandleTaskDelay(Unit n)
-        {
-            this.EventList.Add(new Event
-            {
-                AddTime = DateTime.Now,
-                Content = "From TaskDelay",
-                ThreadId = 0
-            });
         }
     }
 }

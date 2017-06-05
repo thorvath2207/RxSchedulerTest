@@ -10,6 +10,6 @@ namespace ReactiveThreadSucks
     {
         public DateTime AddTime { get; set; }
         public string Content { get; set; }
-        public int ThreadId { get; set; }
+        public string ThreadId { get; set; }
     }
 }
