@@ -83,20 +83,16 @@ namespace ReactiveThreadSucks.ViewModel
         {
             this.ResultLabel = string.Empty;
 
-            var obs = this.SampleTask()
+            //var obs = this.SampleTask()
+            //    .ToObservable()
+            //    .ObserveOnDispatcher()
+            //    .Subscribe(this.HandleResponse);
+
+            var obs2 = this.SampleSubTask()
                 .ToObservable()
                 .ObserveOnDispatcher()
                 .Subscribe(this.HandleResponse);
 
-            //obs.SubscribeOn(this.SubscireOnScheduler.Value)
-            //    .ObserveOn(this.ObserveOnScheduler.Value)
-            //    .Subscribe(HandleResponse);
-
-            var obs2 = Task.Delay(TimeSpan.FromSeconds(35)).ToObservable();
-
-            obs2.SubscribeOn(this.SubscireOnScheduler.Value)
-                .ObserveOn(this.ObserveOnScheduler.Value)
-                .Subscribe(HandleTaskDelay);
         }
 
         private async Task<List<Event>> SampleTask()
@@ -115,19 +111,29 @@ namespace ReactiveThreadSucks.ViewModel
                 });
             }
 
-            await this.SampleSubTask();
+            var response2 = await this.SampleSubTask();
+            result.Add(response2);
             return result;
         }
 
-        private Task<string> SampleSubTask()
+        private Task<Event> SampleSubTask()
         {
-            return Task.Run<string>(async () =>
+            return Task.Run(async () =>
             {
                 System.Diagnostics.Debug.WriteLine("Start new sub task on thread id: {0}",
                     System.Threading.Thread.CurrentThread.ManagedThreadId);
-                await Task.Delay(5000);
                 System.Threading.Thread.Sleep(10000);
-                return "lofaszt a seggedbe";
+                using (HttpClient httpClient = new HttpClient())
+                {
+                    var uri = "http://setgetgo.com/randomword/get.php";
+                    var response = await httpClient.GetStringAsync(uri);
+                    return new Event
+                    {
+                        AddTime = DateTime.Now,
+                        Content = response,
+                        ThreadId = System.Threading.Thread.CurrentThread.ManagedThreadId
+                    };
+                }
             });
         }
 
@@ -138,6 +144,21 @@ namespace ReactiveThreadSucks.ViewModel
                 System.Diagnostics.Debug.WriteLine("Received on Thread id: {0}",
                     System.Threading.Thread.CurrentThread.ManagedThreadId);
                 responses.ForEach(r => this.EventList.Add(r));
+            }
+            catch (Exception e)
+            {
+                this.ResultLabel = e.Message;
+                this.RaisePropertyChanged(() => this.ResultLabel);
+            }
+        }
+
+        private void HandleResponse(Event response)
+        {
+            try
+            {
+                System.Diagnostics.Debug.WriteLine("Received on Thread id: {0}",
+                    System.Threading.Thread.CurrentThread.ManagedThreadId);
+                this.EventList.Add(response);
             }
             catch (Exception e)
             {
